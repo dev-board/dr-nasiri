@@ -1,53 +1,45 @@
 var svg = d3.select("svg"),
-margin = {top: 20, right: 20, bottom: 30, left: 50},
-width = +svg.attr("width") - margin.left - margin.right,
-height = +svg.attr("height") - margin.top - margin.bottom,
-g = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+    width = +svg.attr("width"),
+    height = +svg.attr("height"),
+    g = svg.append("g").attr("transform", "translate(" + (width / 2 + 40) + "," + (height / 2 + 90) + ")");
 
-var parseTime = d3.timeParse("%d-%b-%y");
+var stratify = d3.stratify()
+    .parentId(function(d) { return d.id.substring(0, d.id.lastIndexOf(".")); });
 
-var x = d3.scaleTime()
-.rangeRound([0, width]);
+var tree = d3.tree()
+    .size([2 * Math.PI, 500])
+    .separation(function(a, b) { return (a.parent == b.parent ? 1 : 2) / a.depth; });
 
-var y = d3.scaleLinear()
-.rangeRound([height, 0]);
+d3.csv("flare.csv", function(error, data) {
+  if (error) throw error;
 
-var line = d3.line()
-.x(function(d) { return x(d.date); })
-.y(function(d) { return y(d.close); });
+  var root = tree(stratify(data));
 
-d3.tsv("data.tsv", function(d) {
-d.date = parseTime(d.date);
-d.close = +d.close;
-return d;
-}, function(error, data) {
-if (error) throw error;
+  var link = g.selectAll(".link")
+    .data(root.links())
+    .enter().append("path")
+      .attr("class", "link")
+      .attr("d", d3.linkRadial()
+          .angle(function(d) { return d.x; })
+          .radius(function(d) { return d.y; }));
 
-x.domain(d3.extent(data, function(d) { return d.date; }));
-y.domain(d3.extent(data, function(d) { return d.close; }));
+  var node = g.selectAll(".node")
+    .data(root.descendants())
+    .enter().append("g")
+      .attr("class", function(d) { return "node" + (d.children ? " node--internal" : " node--leaf"); })
+      .attr("transform", function(d) { return "translate(" + radialPoint(d.x, d.y) + ")"; });
 
-g.append("g")
-  .attr("transform", "translate(0," + height + ")")
-  .call(d3.axisBottom(x))
-.select(".domain")
-  .remove();
+  node.append("circle")
+      .attr("r", 2.5);
 
-g.append("g")
-  .call(d3.axisLeft(y))
-.append("text")
-  .attr("fill", "#000")
-  .attr("transform", "rotate(-90)")
-  .attr("y", 6)
-  .attr("dy", "0.71em")
-  .attr("text-anchor", "end")
-  .text("Price ($)");
-
-g.append("path")
-  .datum(data)
-  .attr("fill", "none")
-  .attr("stroke", "steelblue")
-  .attr("stroke-linejoin", "round")
-  .attr("stroke-linecap", "round")
-  .attr("stroke-width", 1.5)
-  .attr("d", line);
+  node.append("text")
+      .attr("dy", "0.31em")
+      .attr("x", function(d) { return d.x < Math.PI === !d.children ? 6 : -6; })
+      .attr("text-anchor", function(d) { return d.x < Math.PI === !d.children ? "start" : "end"; })
+      .attr("transform", function(d) { return "rotate(" + (d.x < Math.PI ? d.x - Math.PI / 2 : d.x + Math.PI / 2) * 180 / Math.PI + ")"; })
+      .text(function(d) { return d.id.substring(d.id.lastIndexOf(".") + 1); });
 });
+
+function radialPoint(x, y) {
+  return [(y = +y) * Math.cos(x -= Math.PI / 2), y * Math.sin(x)];
+}
